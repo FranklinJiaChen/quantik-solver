@@ -7,7 +7,7 @@ Solves the combinatorial game "Qauntik"
 1. Represent the board using a 2d array.
 2. Normalize the board using
    [sudoku symmetry group](https://pi.math.cornell.edu/~mec/Summer2009/Mahmood/Symmetry.html)
-   to reduce the solution space.
+   to reduce the solution space. (# states after move 2 reduced from 3840 --> 7)
 
    Note that reflections are not included
    as separate elements in the symmetry group,
