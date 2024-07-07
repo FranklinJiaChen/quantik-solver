@@ -1,6 +1,6 @@
 import numpy as np
 
-def swap_symbols(board: np.ndarray):
+def relabel(board: np.ndarray):
     """
     Given a 4x4 matrix with cells (-4, 4),
     swap the symbols of the matrix such that:
@@ -16,22 +16,23 @@ def swap_symbols(board: np.ndarray):
     """
 
     mapping = {0: 0}
-    largest_positive = 4
-    largest_negative = -1
+    unmapped_symbols = [1, 2, 3, 4]
 
     # Iterate over each element's indices
     for row in range(board.shape[0]):
         for col in range(board.shape[1]):
             cell = board[row, col]  # Get the current cell value
-            if cell not in mapping:
+            cell_symbol = abs(cell)  # Get the symbol of the cell
+            sign = 1 if cell > 0 else -1  # Get the sign of the cell
+            if cell_symbol not in mapping:
                 if cell > 0:
-                    mapping[cell] = largest_positive
-                    largest_positive -= 1
+                    mapping[cell_symbol] = max(unmapped_symbols)
+                    unmapped_symbols.remove(mapping[cell_symbol])
                 else:
-                    mapping[cell] = largest_negative
-                    largest_negative -= 1
+                    mapping[cell_symbol] = min(unmapped_symbols)
+                    unmapped_symbols.remove(mapping[cell_symbol])
             # Update the cell value in the original board
-            board[row, col] = mapping[cell]
+            board[row, col] = mapping[abs(cell)]*sign
 
     return board
 
@@ -44,7 +45,7 @@ board = np.array([
 ], dtype='object')
 
 # Swap the symbols of the matrix
-new_board = swap_symbols(board.copy())  # Use .copy() to avoid modifying the original board
+new_board = relabel(board.copy())  # Use .copy() to avoid modifying the original board
 
 
 # Print the original and new matrix
