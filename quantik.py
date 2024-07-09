@@ -1,8 +1,17 @@
 import numpy as np
 import itertools
+import mysql.connector
 from utils import (matrix_to_flat_list, flat_list_to_matrix,
                    matrix_to_flat_tuple, flat_tuple_to_matrix)
 
+SQL_CONFIG = {
+    'user': 'root',
+    'host': 'localhost',
+    'database': 'quantik',
+}
+
+# Symmetries for the game of Quantik, for normalization
+# Follows Sudoku symmetries.
 PERMUTE_BAND_SYMMETRY = [
     lambda matrix: matrix,                    # Identity function
     lambda matrix: matrix[[2, 3, 0, 1], :]    # Permute Band
@@ -41,7 +50,6 @@ SYMMETRIES = [
     PERMUTE_COL_SYMMETRY,
     ROTATIONAL_SYMMETRY
 ]
-
 
 def get_region(row, col):
     """
@@ -125,6 +133,28 @@ def get_normalized_form(matrix: np.ndarray) -> np.ndarray:
     return flat_list_to_matrix(max_representation)
 
 
+def connect_to_database() -> None:
+    """
+    Connects to the MySQL database.
+    """
+    global conn, cursor
+    try:
+        conn = mysql.connector.connect(**SQL_CONFIG)
+        cursor = conn.cursor()
+    except mysql.connector.Error as e:
+        print(f"Error connecting to MySQL: {e}")
+        return
+
+def disconnect_from_database() -> None:
+    """
+    Disconnects from the MySQL database.
+    """
+    if 'conn' in locals() and conn.is_connected():
+        cursor.close()
+        conn.close()
+        print('MySQL connection closed')
+
+
 class Quantik:
     """
     A class representing the Quantik board game.
@@ -150,17 +180,13 @@ class Quantik:
     Methods:
     - print_board(): Prints the current state of the board.
     """
-    def __init__(self) -> None:
-        self.board = [[0 for _ in range(4)] for _ in range(4)]
-        self.board = [[4, 0, 0, 0],
-                      [0, 0, 0, 0],
-                      [0, 0, 0, 0],
-                      [0, 0, 0, 0]]
+    minimax_count = 0
+    def __init__(self,
+                 board: list[list[int]] =
+                    [[0 for _ in range(4)] for _ in range(4)]) -> None:
 
-        self.board = np.array(self.board)
-
-        self.board = get_normalized_form(self.board)
-        self.current_player = 2  # Player 1 starts first
+        self.board = get_normalized_form(np.array(board))
+        self.current_player = 1  # Player 1 starts first
         self.player1_pieces = [1, 2, 3, 4] * 2
         self.player2_pieces = [-1, -2, -3, -4] * 2
 
@@ -188,7 +214,7 @@ class Quantik:
                 elif cell < 0:
                     self.player2_pieces.remove(cell)
 
-        if len(self.player1_pieces) > len(self.player2_pieces):
+        if len(self.player1_pieces) < len(self.player2_pieces):
             self.current_player = 2
         else:
             self.current_player = 1
@@ -236,7 +262,82 @@ class Quantik:
 
         return moves
 
-# Example usage:
-game = Quantik()
-print(game.get_moves())
 
+    def is_terminal(self) -> bool:
+        """
+        Returns whether the current state is a terminal state.
+
+        Returns:
+        - bool: True if the current state is a terminal state,
+                False otherwise.
+        """
+        for i in range(4):
+            # Check rows
+            if all(num in self.board[i] or -num in self.board[i] for num in range(1, 5)):
+                return True
+
+            # Check columns
+            if all(num in self.board[:, i] or -num in self.board[:, i] for num in range(1, 5)):
+                return True
+
+            # Check regions
+            region_cells = [self.board[j, k] for j in range(2*(i//2), 2*(i//2) + 2)
+                            for k in range(2*(i % 2), 2*(i % 2) + 2)]
+            if all(num in region_cells or -num in region_cells for num in range(1, 5)):
+                return True
+        return False
+
+    def evaluate_board(self) -> int:
+        """
+        Returns the evaluation of the board state. (uses minimax)
+
+        Returns:
+        - int: The evaluation of the board state.
+            - If player 1 can force a win, return 1.
+            - If player 2 can force a win, return -1.
+        """
+        Quantik.minimax_count += 1
+        print("counter:", Quantik.minimax_count)
+
+        cursor.execute(f'''
+                        SELECT eval FROM quantik
+                        WHERE board = "{str(self.board)}"
+                        ''')
+        board_data = cursor.fetchone()
+        if board_data and board_data[0]: return board_data[0]
+
+        self.set_info()
+        if self.is_terminal():
+            # Base case: previous player won on the last move
+            eval = 1 if self.current_player == 2 else -1
+        else:
+            moves = self.get_moves()
+            if not moves:
+                # Base case: no more moves left, current player lost
+                eval = -1 if self.current_player == 2 else 1
+            else:
+                # minimax
+                best_score = float('-inf') if self.current_player == 1 else float('inf')
+                for move in moves:
+                    quantik_game = Quantik(move)
+                    score = quantik_game.evaluate_board()
+                    best_score = max(best_score, score) if self.current_player == 1 else min(best_score, score)
+                eval = best_score
+
+        cursor.execute(f'''
+                        INSERT INTO quantik (board, eval)
+                        VALUES ("{self.board}", {eval})
+                        ''')
+        conn.commit()
+        return eval
+
+def main():
+    connect_to_database()
+    game = Quantik()
+    game.print_board()
+    print(game.evaluate_board())
+    disconnect_from_database()
+
+
+if __name__ == '__main__':
+    main()
