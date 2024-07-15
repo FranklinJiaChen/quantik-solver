@@ -133,6 +133,33 @@ def get_normalized_form(matrix: np.ndarray) -> np.ndarray:
     return flat_list_to_matrix(max_representation)
 
 
+def is_terminal(board: tuple[int], pos: int) -> bool:
+    """
+    Given a board state and a new piece position,
+    check if the board state is terminal.
+    """
+    row = pos // 4
+    col = pos % 4
+    region = get_region(row, col)
+
+    # Check rows
+    row_elements = [abs(board[row*4+i]) for i in range(4) if board[row*4+i] != 0]
+    if len(set(row_elements)) == 4:
+        return True
+    # Check columns
+    col_elements = [abs(board[i*4+col]) for i in range(4) if board[i*4+col] != 0]
+    if len(set(col_elements)) == 4:
+        return True
+    # Check regions
+    region_cells = [board[j*4+k] for j in range(2*(region//2), 2*(region//2) + 2)
+                    for k in range(2*(region % 2), 2*(region % 2) + 2) if board[j*4+k] != 0]
+    if len(set(region_cells)) == 4:
+        return True
+
+    return False
+
+
+
 def connect_to_database() -> None:
     """
     Connects to the MySQL database.
@@ -219,10 +246,24 @@ class Quantik:
         else:
             self.current_player = 1
 
+        self.move_number = 16 - len(self.player1_pieces) - len(self.player2_pieces)
 
-    def get_moves(self) -> list[np.ndarray]:
+
+    def get_moves(self) -> tuple[np.ndarray, list[np.ndarray]]:
         """
-        Returns a list of valid moves for the current player.
+        Note: This function has a conditional
+               return type (to speed up solving)
+
+        Returns an immediate winning move or all possible moves.
+
+        Returns
+        - tuple[np.ndarray, list[np.ndarray]]:
+            A tuple containing the immediate winning move
+            and all possible moves.
+
+        If no immediate winning move is found,
+            the first element of the tuple is None.
+        If a winning move is found, the second element of the tuple is None.
         """
         moves = []
         moves_set = set() # used to check for duplicates
@@ -257,10 +298,12 @@ class Quantik:
                 new_board[pos] = piece
                 new_board = matrix_to_flat_tuple(get_normalized_form(flat_list_to_matrix(new_board)))
                 if new_board not in moves_set:
+                    if is_terminal(new_board, pos):
+                        return new_board, None
                     moves_set.add(new_board)
                     moves.append(flat_tuple_to_matrix(new_board))
 
-        return moves
+        return None, moves
 
 
     def is_terminal(self) -> bool:
@@ -287,9 +330,10 @@ class Quantik:
                 return True
         return False
 
-    def evaluate_board(self) -> int:
+    def evaluate_board(self, alpha: int, beta: int) -> int:
         """
-        Returns the evaluation of the board state. (uses minimax)
+        Returns the evaluation of the board state. (uses minimax
+        and alpha-beta pruning)
 
         Returns:
         - int: The evaluation of the board state.
@@ -299,6 +343,7 @@ class Quantik:
         Quantik.minimax_count += 1
         print("counter:", Quantik.minimax_count)
 
+        pruned = False
         cursor.execute(f'''
                         SELECT eval FROM quantik
                         WHERE board = "{str(self.board)}"
@@ -307,35 +352,50 @@ class Quantik:
         if board_data and board_data[0]: return board_data[0]
 
         self.set_info()
-        if self.is_terminal():
-            # Base case: previous player won on the last move
-            eval = 1 if self.current_player == 2 else -1
-        else:
-            moves = self.get_moves()
-            if not moves:
-                # Base case: no more moves left, current player lost
-                eval = -1 if self.current_player == 2 else 1
-            else:
-                # minimax
-                best_score = float('-inf') if self.current_player == 1 else float('inf')
-                for move in moves:
-                    quantik_game = Quantik(move)
-                    score = quantik_game.evaluate_board()
-                    best_score = max(best_score, score) if self.current_player == 1 else min(best_score, score)
-                eval = best_score
 
-        cursor.execute(f'''
-                        INSERT INTO quantik (board, eval)
-                        VALUES ("{self.board}", {eval})
-                        ''')
-        conn.commit()
+        best_move, moves = self.get_moves()
+        if best_move:
+            # Base case: current player has an immediate win
+            eval = 1 if self.current_player == 1 else -1
+        elif not moves:
+            # Base case: current player has no moves left and loses
+            eval = 1 if self.current_player == 2 else -1
+        # minimax with alpha-beta pruning
+        else:
+            best_score = float('-inf') if self.current_player == 1 else float('inf')
+            for move in moves:
+                quantik_game = Quantik(move)
+                score = quantik_game.evaluate_board(alpha, beta)
+                best_score = max(best_score, score) if self.current_player == 1 else min(best_score, score)
+                if self.current_player == 1:
+                    alpha = max(alpha, score)
+                else:
+                    beta = min(beta, score)
+                # alpha-beta pruning
+                if beta <= alpha:
+                    pruned = True
+                    break
+                # break if we find a winning move
+                if self.current_player == 1 and best_score == 1:
+                    break
+                if self.current_player == 2 and best_score == -1:
+                    break
+            eval = best_score
+
+        print(f"{self.board}")
+        if not pruned:
+            cursor.execute(f'''
+                            INSERT INTO quantik (board, eval, move_number)
+                            VALUES ("{str(self.board)}", {eval}, {self.move_number})
+                            ''')
+            conn.commit()
         return eval
 
 def main():
     connect_to_database()
     game = Quantik()
     game.print_board()
-    print(game.evaluate_board())
+    print(game.evaluate_board(float('-inf'), float('inf')))
     disconnect_from_database()
 
 

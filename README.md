@@ -17,3 +17,6 @@ Solves the combinatorial game "Qauntik"
    which includes reflections as part of the symmetry group.
 
 3. Solve using minimax and memoization
+
+## Results
+Player 2 is able to force a win through perfect play.
