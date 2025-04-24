@@ -11,7 +11,7 @@ Solves the combinatorial game "Qauntik"
 
    Note that reflections are not included
    as separate elements in the symmetry group,
-   as they are identical created through
+   as they are identically created through
    permutations of rows, columns, bands, and stacks.
    This approach differs from the referenced link,
    which includes reflections as part of the symmetry group.
