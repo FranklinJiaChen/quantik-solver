@@ -1,6 +1,6 @@
 # quantik-solver
 
-Solves the combinatorial game "Quantik"
+Solves the combinatorial game [Quantik](https://boardgamegeek.com/boardgame/286295/quantik)
 
 ## Methodology
 
@@ -16,7 +16,7 @@ Solves the combinatorial game "Quantik"
    This approach differs from the referenced link,
    which includes reflections as part of the symmetry group.
 
-3. Solve using minimax and memoization
+3. Solve using minimax and memoization.
 
 ## Results
 Player 2 is able to force a win through perfect play.
