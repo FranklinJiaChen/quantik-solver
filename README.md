@@ -1,6 +1,6 @@
 # quantik-solver
 
-Solves the combinatorial game "Qauntik"
+Solves the combinatorial game "Quantik"
 
 ## Methodology
 
